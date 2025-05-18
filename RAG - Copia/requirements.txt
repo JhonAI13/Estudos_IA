@@ -1,0 +1,10 @@
+requests
+rich
+python-dotenv
+langchain
+faiss_cpu
+openai
+langchain_community
+langchain_text_splitters
+sentence_transformers
+huggingface_hub
