@@ -1,0 +1,550 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/JhonAI13/Estudos_IA/blob/main/Agentes_Gemini_post_linkedin\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "%pip -q install google-genai"
+      ],
+      "metadata": {
+        "id": "UCCbECexLk_h"
+      },
+      "execution_count": 12,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Instalar Framework ADK de agentes do Google ################################################\n",
+        "!pip -q install google-adk"
+      ],
+      "metadata": {
+        "id": "hvZ3UnPI4jhJ"
+      },
+      "execution_count": 13,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 14,
+      "metadata": {
+        "id": "aePV2bdfDeoW"
+      },
+      "outputs": [],
+      "source": [
+        "\n",
+        "import os\n",
+        "from google.colab import userdata\n",
+        "from google import genai\n",
+        "from IPython.display import HTML, Markdown\n",
+        "from google.adk.agents import Agent\n",
+        "from google.adk.runners import Runner\n",
+        "from google.adk.sessions import InMemorySessionService\n",
+        "from google.adk.tools import google_search\n",
+        "from google.genai import types  # Para criar conteúdos (Content e Part)\n",
+        "from datetime import date\n",
+        "import textwrap # Para formatar melhor a saída de texto\n",
+        "from IPython.display import display, Markdown # Para exibir texto formatado no Colab\n",
+        "import requests # Para fazer requisições HTTP\n",
+        "import warnings\n",
+        "\n",
+        "warnings.filterwarnings(\"ignore\")"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import os, google.generativeai as genai, textwrap, sys, traceback\n",
+        "from dotenv import load_dotenv\n",
+        "\n",
+        "print(\"\\n=== INÍCIO DO SCRIPT ===\")\n",
+        "load_dotenv()\n",
+        "\n",
+        "# Debug: Verifica variáveis de ambiente\n",
+        "GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')\n",
+        "print(f\"API Key carregada: {'Sim' if GOOGLE_API_KEY else 'Não'}\")\n",
+        "\n",
+        "MODELO_GLOBAL = 'gemini-1.5-flash'\n",
+        "\n",
+        "class Agent:\n",
+        "    def __init__(self, name, instruction):\n",
+        "        self.name = name\n",
+        "        self.model = MODELO_GLOBAL\n",
+        "        self.instruction = instruction\n",
+        "\n",
+        "def call_agent(agent, input_data):\n",
+        "    print(f\"\\nChamando agente: {agent.name}\")\n",
+        "    try:\n",
+        "        genai.configure(api_key=GOOGLE_API_KEY)\n",
+        "        model = genai.GenerativeModel(agent.model)\n",
+        "        response = model.generate_content(agent.instruction + \"\\n\\n---\\n\\n\" + input_data)\n",
+        "        return response.text if response.text else \"Sem resposta\"\n",
+        "    except Exception as e:\n",
+        "        print(f\"Erro no agente {agent.name}: {str(e)}\")\n",
+        "        return None\n",
+        "\n",
+        "agents = {\n",
+        "    'processor': Agent('Processor', \"\"\"\n",
+        "\n",
+        "            Você é um Processador de Informações e Planejador de Conteúdo para LinkedIn.\n",
+        "            Sua tarefa é ler atentamente o conteúdo bruto fornecido (que pode ser extenso, como notas de um projeto ou aprendizado em formato Markdown ou texto simples).\n",
+        "            Com base nesse conteúdo, você deve extrair o tópico principal e os pontos mais relevantes,\n",
+        "            e estruturá-los em um formato conciso para ser usado por agentes subsequentes (redator e gerador de prompt de imagem).\n",
+        "\n",
+        "            O conteúdo bruto pode descrever:\n",
+        "            - Um projeto (objetivos, etapas, tecnologias usadas, desafios, soluções, resultados, links para código).\n",
+        "            - Um aprendizado (cursos, aulas, conceitos novos, como aplicar).\n",
+        "            - Uma reflexão sobre a área (mercado, tendências, soft skills).\n",
+        "            - Notas gerais sobre um tema técnico.\n",
+        "\n",
+        "            Seu objetivo é criar um \"Plano de Post Detalhado\" e identificar o \"Tópico Principal\".\n",
+        "            Este plano deve incluir:\n",
+        "            - O Tópico Principal claro e conciso (uma ou duas frases).\n",
+        "            - Pontos Chave a Cobrir: Uma lista (em bullet points) dos detalhes mais importantes, tecnologias, resultados, aprendizados, desafios superados, ou quaisquer fatos relevantes do conteúdo bruto que devem aparecer no post do LinkedIn. Pense no que é mais interessante para destacar em um post técnico/de carreira.\n",
+        "            - Links a Incluir: Se houver links relevantes mencionados no texto (GitHub, artigo, etc.), liste-os aqui.\n",
+        "            - Conceitos Visuais Sugeridos: Ideias breves para imagens ou diagramas que representem o conteúdo (ex: \"laptop com chat\", \"diagrama de fluxo de dados\", \"ícones de tecnologias\"), mantendo o estilo visual de Jonathas (minimalista, técnico, branco no preto).\n",
+        "\n",
+        "            Formato de Saída:\n",
+        "            A sua resposta deve seguir estritamente o seguinte formato:\n",
+        "\n",
+        "            TÓPICO PRINCIPAL: [Seu Tópico Principal aqui]\n",
+        "\n",
+        "            PLANO DE POST DETALHADO:\n",
+        "            Pontos Chave a Cobrir:\n",
+        "            - [Ponto 1]\n",
+        "            - [Ponto 2]\n",
+        "            - ...\n",
+        "            Links a Incluir (se aplicável):\n",
+        "            - [Link 1]\n",
+        "            - [Link 2]\n",
+        "            - ...\n",
+        "            Conceitos Visuais Sugeridos (se aplicável):\n",
+        "            - [Sugestão Visual 1]\n",
+        "            - [Sugestão Visual 2]\n",
+        "            - ...\n",
+        "\n",
+        "            Se uma seção (Links, Conceitos Visuais) não for aplicável ou não houver informação no conteúdo bruto, omita essa seção ou coloque \"N/A\".\n",
+        "\n",
+        "            Seja direto e focado na extração e organização. Não escreva o post final. Priorize informações que demonstrem habilidades técnicas e proatividade, alinhado com a busca por emprego de Jonathas.\"\"\"),\n",
+        "    'writer': Agent('Writer', \"\"\"\n",
+        "            Você é um Redator de Conteúdo especializado em LinkedIn, com foco na área de Tecnologia, Análise de Dados e IA no Brasil.\n",
+        "            Você escreve rascunhos de posts para o perfil de Jonathas Martins da Rocha, mimetizando seu estilo autêntico e profissional.\n",
+        "\n",
+        "            Sua missão é transformar o 'Tópico Principal' e o 'Plano de Post Detalhado' fornecidos em um RASCUNHO de post para LinkedIn.\n",
+        "            O rascunho deve ser engajador para profissionais da área, destacar as habilidades e conhecimentos de Jonathas (Python, Análise de Dados, IA, BI, etc.),\n",
+        "            e contribuir explicitamente ou implicitamente para seu objetivo de encontrar novas oportunidades de emprego, mostrando proatividade e aplicação prática.\n",
+        "\n",
+        "            Diretrizes de Estilo e Estrutura (Baseado nos posts de Jonathas):\n",
+        "            1.  Tom: Profissional, direto, entusiasmado com tecnologia e aprendizado. Focar no \"como\" e \"porquê\".\n",
+        "            2.  Linguagem: Português do Brasil (PT-BR), claro e conciso.\n",
+        "            3.  Estrutura:\n",
+        "                -   Comece com um gancho inicial forte (frase curta, pergunta, referência a algo anterior).\n",
+        "                -   Desenvolva o conteúdo em parágrafos curtos. Use listas (bullet points ✨) para destacar pontos-chave, etapas ou características, se apropriado.\n",
+        "                -   Explique brevemente conceitos técnicos importantes (como fez com RAG).\n",
+        "                -   Se fizer sentido, conecte o post a projetos anteriores (referenciando-os, se possível com link) ou a planos futuros.\n",
+        "                -   Inclua links relevantes (GitHub, posts anteriores, etc.) se o 'Plano de Post Detalhado' contiver essa informação na seção \"Links a Incluir\".\n",
+        "            4.  Elementos Visuais (Texto): Use emojis relevantes com moderação (🚀, ✨, 🇧🇷, 👀, 🤖). Use espaçamento para facilitar a leitura.\n",
+        "            5.  Alinhamento com Objetivos: Enquadre o conteúdo para demonstrar as habilidades de Jonathas listadas em seu perfil. Mostre proatividade (iniciar projetos, buscar aprendizado), capacidade de aplicar conhecimento (projetos) e profissionalismo.\n",
+        "            6.  Hashtags: Gere um bloco de hashtags relevantes e estratégicas no final do post. Inclua termos técnicos (do post e do perfil do Jonathas), hashtags de tech brasileira (#DevBR, #TechBrasil, #Desenvolvimento), e hashtags sobre carreira, aprendizado e inovação (#Carreira, #AprendizadoContinuo, #ProjetosPessoais, #Inovação, #DataScience, #IA, #Python, #BI, etc.). Generate entre 5 e 15 hashtags, buscando relevância máxima.\n",
+        "\n",
+        "            O resultado deve ser o rascunho COMPLETO do post, formatado para o LinkedIn.\n",
+        "            \"\"\"),\n",
+        "    'reviewer': Agent('Reviewer', \"\"\"\n",
+        "            Você é um Revisor de Conteúdo e Editor especializado em posts de LinkedIn para profissionais de Tecnologia/Dados,\n",
+        "            atuando como um editor final para os posts de Jonathas Martins da Rocha.\n",
+        "\n",
+        "            Sua tarefa é analisar o 'Rascunho do Post' gerado pelo agente redator, comparando-o com o 'Tópico Principal' e o 'Plano de Post Detalhado' originais.\n",
+        "            Verifique se o post:\n",
+        "            1.  Representa fielmente o conteúdo e os pontos chave do plano.\n",
+        "            2.  Adere ao estilo e tom de Jonathas (profissional, direto, entusiasmado, PT-BR), conforme as diretrizes: Tom direto e focado no \"como/porquê\", Linguagem clara, Estrutura com gancho/parágrafos curtos/listas/explicações, uso moderado de emojis (🚀, ✨, 🇧🇷, 👀, 🤖), espaçamento.\n",
+        "            3.  Efetivamente demonstra suas habilidades técnicas e proatividade, alinhado com seu objetivo de busca de emprego.\n",
+        "            4.  Está bem estruturado, claro e SEM erros gramaticais/ortográficos ou de pontuação.\n",
+        "            5.  Possui um bloco de hashtags relevantes e no formato esperado no final.\n",
+        "\n",
+        "            Revise o rascunho de ponta a ponta. Corrija quaisquer erros encontrados. Ajuste a clareza, a fluidez e o tom se necessário para torná-lo mais impactante e alinhado com o estilo de Jonathas. Garanta que o post finalize de forma profissional, incentivando a leitura e demonstração de expertise.\n",
+        "\n",
+        "            O objetivo é entregar a versão FINAL e polida do texto do post de LinkedIn. Sua resposta deve ser APENAS o texto FINAL do post, não escreva no formato .md.\n",
+        "            \"\"\"),\n",
+        "    'image': Agent('Image', \"\"\"\n",
+        "Você é um agente especialista em transformar ideias técnicas e de marketing em prompts visuais otimizados para ferramentas de geração de imagem com IA.\n",
+        "\n",
+        "Seu objetivo é criar prompts mais compactos, mantendo clareza e força visual, no estilo de Jonathas Martins da Rocha.\n",
+        "\n",
+        "Siga esta estrutura:\n",
+        "\n",
+        "Estilo Visual:\n",
+        " - Minimalista, flat design, line art, vetorial. Use termos como: \"vector art\", \"line art\", \"minimal\", \"clean\".\n",
+        " - Monocromático branco sobre fundo preto puro (#000000). Use: \"white line art on black background\".\n",
+        "\n",
+        "Elementos:\n",
+        " - Ícones simples e concretos (ex: cérebro, laptop, servidor, banco de dados, chat bubbles, escudo de segurança, setas, engrenagens).\n",
+        " - Diagramas conceituais se fizer sentido.\n",
+        "\n",
+        "Composição:\n",
+        " - Organização centralizada ou em rede, com espaço negativo para texto (ex: \"ample negative space for text\").\n",
+        "\n",
+        "Formato:\n",
+        " - Aspect ratio 1:1 (use “--ar 1:1” no final do prompt).\n",
+        " - Não inclua texto para aparecer na imagem.\n",
+        "\n",
+        "Seu output deve ser apenas o texto do prompt da imagem, começando diretamente com a descrição visual, curto e direto ao ponto.\n",
+        "\"\"\")\n",
+        "}\n",
+        "\n",
+        "def process_file(content):\n",
+        "    display(Markdown(\"**\\nProcessando conteúdo...**\"))\n",
+        "\n",
+        "    processed = call_agent(agents['processor'], content)\n",
+        "    display(Markdown(\"**Saída do Processador:**\"))\n",
+        "    display(Markdown(f\"```\\n{processed}\\n```\"))\n",
+        "\n",
+        "    if not processed or \"PLANO DE POST\" not in processed:\n",
+        "        display(HTML(\"<span style='color:red'>Falha no processamento inicial</span>\"))\n",
+        "        return None, None\n",
+        "\n",
+        "    try:\n",
+        "        topic = processed.split(\"TÓPICO PRINCIPAL:\")[1].split(\"\\n\")[0].strip()\n",
+        "        display(Markdown(f\"**Tópico detectado:** `{topic}`\"))\n",
+        "    except Exception as e:\n",
+        "        display(HTML(f\"<span style='color:red'>Erro ao extrair tópico: {str(e)}</span>\"))\n",
+        "        return None, None\n",
+        "\n",
+        "    display(Markdown(\"**Chamando Redator...**\"))\n",
+        "    draft = call_agent(agents['writer'], f\"Tópico: {topic}\\n{processed}\")\n",
+        "    display(Markdown(\"**Rascunho Gerado:**\"))\n",
+        "    display(Markdown(f\"```\\n{draft}\\n```\"))\n",
+        "\n",
+        "    display(Markdown(\"**Chamando Revisor...**\"))\n",
+        "    final = call_agent(agents['reviewer'], draft or \"\")\n",
+        "    display(Markdown(\"**Versão Revisada:**\"))\n",
+        "    display(Markdown(f\"```\\n{final}\\n```\"))\n",
+        "\n",
+        "    display(Markdown(\"**Gerando Prompt de Imagem...**\"))\n",
+        "    image_prompt = call_agent(agents['image'], processed or \"\")\n",
+        "    display(Markdown(\"**Prompt de Imagem:**\"))\n",
+        "    display(Markdown(f\"```\\n{image_prompt}\\n```\"))\n",
+        "\n",
+        "    return final, image_prompt\n",
+        "\n",
+        "if __name__ == \"__main__\":\n",
+        "    caminho_arquivo = \"/Dashboard_web.txt\"  # Mantenha seu caminho aqui\n",
+        "\n",
+        "    display(Markdown(f\"### Verificando arquivo: `{caminho_arquivo}`\"))\n",
+        "\n",
+        "    if not os.path.exists(caminho_arquivo):\n",
+        "        display(HTML(\"<span style='color:red; font-weight:bold'>ERRO: Arquivo não encontrado!</span>\"))\n",
+        "        sys.exit(1)\n",
+        "\n",
+        "    if not caminho_arquivo.lower().endswith('.txt'):\n",
+        "        display(HTML(\"<span style='color:red; font-weight:bold'>ERRO: O arquivo deve ser .txt!</span>\"))\n",
+        "        sys.exit(1)\n",
+        "\n",
+        "    try:\n",
+        "        with open(caminho_arquivo, 'r', encoding='utf-8') as f:\n",
+        "            content = f.read()\n",
+        "            display(Markdown(f\"**Tamanho do conteúdo:** {len(content)} caracteres\"))\n",
+        "\n",
+        "            post, img = process_file(content)\n",
+        "\n",
+        "            display(Markdown(\"---\"))\n",
+        "            display(Markdown(\"## RESULTADO FINAL\"))\n",
+        "\n",
+        "            display(Markdown(\"### POST LINKEDIN\"))\n",
+        "            display(Markdown(post)) if post else display(Markdown(\"*Nenhum post gerado*\"))\n",
+        "\n",
+        "            display(Markdown(\"### PROMPT IMAGEM\"))\n",
+        "            display(Markdown(f\"```\\n{img}\\n```\")) if img else display(Markdown(\"*Nenhum prompt gerado*\"))\n",
+        "\n",
+        "    except Exception as e:\n",
+        "        display(HTML(f\"<span style='color:red; font-weight:bold'>Erro fatal: {str(e)}</span>\"))\n",
+        "        sys.exit(1)"
+      ],
+      "metadata": {
+        "id": "opndGbytSuM_",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 1000
+        },
+        "outputId": "7acdaee5-1539-4c63-967d-2be3158a805e"
+      },
+      "execution_count": 15,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "=== INÍCIO DO SCRIPT ===\n",
+            "API Key carregada: Sim\n"
+          ]
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "### Verificando arquivo: `/Dashboard_web.txt`"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Tamanho do conteúdo:** 15240 caracteres"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**\nProcessando conteúdo...**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "Chamando agente: Processor\n"
+          ]
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Saída do Processador:**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "```\nTÓPICO PRINCIPAL: Desenvolvi um dashboard interativo em Streamlit para análise de dados de veículos, utilizando Python e bibliotecas como Pandas, NumPy e Matplotlib.\n\nPLANO DE POST DETALHADO:\nPontos Chave a Cobrir:\n- Criação de um dashboard web interativo usando Streamlit para análise exploratória de dados de veículos.\n- Utilização de Python e bibliotecas como Pandas (manipulação de dados), NumPy (operações matemáticas) e Matplotlib (visualização).\n- Implementação de funcionalidades como histogramas interativos, scatter plots dinâmicos, estatísticas descritivas e um mapa de calor de correlação com opção de download.\n- Demonstração de habilidades em visualização de dados e análise exploratória, com foco na criação de uma interface intuitiva para usuários não-técnicos.\n-  Tratamento de dados para lidar com valores ausentes e conversão de tipos de dados.  \n- Compartilhamento do código no GitHub.\nLinks a Incluir:\n- https://github.com/JhonAI13/Dashboard_web\nConceitos Visuais Sugeridos:\n- Screenshot do dashboard mostrando os gráficos e a interface.  Estilo minimalista, branco em fundo preto.\n- Diagrama simplificado da arquitetura do projeto (Streamlit + Pandas + NumPy + Matplotlib). Estilo minimalista, branco em fundo preto.\n- Ícones representando as bibliotecas utilizadas (Streamlit, Pandas, NumPy, Matplotlib). Estilo minimalista, branco em fundo preto.\n\n\n```"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Tópico detectado:** `Desenvolvi um dashboard interativo em Streamlit para análise de dados de veículos, utilizando Python e bibliotecas como Pandas, NumPy e Matplotlib.`"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Chamando Redator...**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "Chamando agente: Writer\n"
+          ]
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Rascunho Gerado:**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "```\nAnalise de dados de veículos? 🚀  Fiz um dashboard interativo para facilitar isso!\n\nSempre gostei de explorar dados e visualizá-los de forma clara e intuitiva.  Recentemente, desenvolvi um dashboard interativo usando o Streamlit para análise de dados de veículos, e a experiência foi incrível!  \n\nO objetivo era criar uma ferramenta que permitisse uma análise exploratória fácil e eficiente, mesmo para usuários sem experiência técnica profunda.  Para isso, utilizei o poder do Python, combinando a versatilidade do Pandas para manipulação de dados, a performance do NumPy para cálculos matemáticos, e a capacidade de visualização do Matplotlib para gerar gráficos ricos e informativos.\n\n✨ **Funcionalidades implementadas:**\n\n*   **Interface interativa:**  Navegação intuitiva através do Streamlit, permitindo explorar os dados de forma dinâmica.\n*   **Visualizações customizadas:** Histogramas interativos, gráficos de dispersão (scatter plots) dinâmicos e um mapa de calor de correlação.\n*   **Estatísticas descritivas:**  Cálculos e apresentação de métricas importantes para uma análise rápida.\n*   **Download de dados:**  Possibilidade de baixar os dados processados e gráficos para uso posterior.\n*   **Tratamento de dados:**  Limpeza e preparação dos dados, incluindo tratamento de valores ausentes e conversão de tipos.\n\n\nConstruir este projeto foi uma ótima oportunidade para aprimorar minhas habilidades em visualização de dados e análise exploratória.  A experiência me permitiu praticar e consolidar meu conhecimento em Python, Streamlit, Pandas, NumPy e Matplotlib.  E o resultado? Um dashboard que facilita a tomada de decisões baseada em dados!\n\n\n➡️  Acesse o código-fonte completo no meu GitHub: [https://github.com/JhonAI13/Dashboard_web](https://github.com/JhonAI13/Dashboard_web)\n\nEstou sempre buscando novos desafios e oportunidades na área de Data Science e Inteligência Artificial.  Se você tem um projeto desafiador ou uma oportunidade interessante, entre em contato!  🇧🇷\n\n\n#DataScience #IA #Python #Streamlit #Pandas #NumPy #Matplotlib #BI #AnáliseDeDados #VisualizaçãoDeDados #Dashboard #ProjetosPessoais #AprendizadoContinuo #DevBR #TechBrasil #Carreira #Inovação #DataAnalysis #DataVisualization #PythonBrasil\n\n\n**(Imagens: Screenshot do dashboard e diagrama da arquitetura do projeto)**\n\n```"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Chamando Revisor...**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "Chamando agente: Reviewer\n"
+          ]
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Versão Revisada:**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "```\nAnálise de dados de veículos? 🚀  Criei um dashboard interativo para facilitar!\n\nSempre gostei de explorar dados e visualizá-los de forma clara e intuitiva.  Recentemente, desenvolvi um dashboard interativo em Streamlit para análise de dados de veículos – e a experiência foi incrível!\n\nO objetivo era criar uma ferramenta para análise exploratória eficiente, mesmo para quem não tem muita experiência técnica.  Para isso, usei o poder do Python, combinando a versatililidadde do Pandas para manipulação de dados, a performance do NumPy para cálculos e o Matplotlib para gráficos ricos e informativos.\n\n✨ **Funcionalidades chave:**\n\n* Interface interativa via Streamlit para navegação dinâmica.\n* Visualizações customizadas: histogramas, gráficos de dispersão e mapa de calor de correlação.\n* Estatísticas descritivas para análise rápida e eficiente.\n* Download de dados processados e gráficos.\n* Tratamento completo dos dados: limpeza, preparação, tratamento de valores ausentes e conversão de tipos.\n\n\nConstruir este projeto aprimorou minhas habilidades em visualização de dados e análise exploratória, consolidando meu conhecimento em Python, Streamlit, Pandas, NumPy e Matplotlib. O resultado? Um dashboard que facilita a tomada de decisões baseada em dados!  E o melhor:  está disponível no meu GitHub!\n\n\n➡️ Acesse o código-fonte completo: [https://github.com/JhonAI13/Dashboard_web](https://github.com/JhonAI13/Dashboard_web)  👀\n\n\nBusco novos desafios em Data Science e Inteligência Artificial.  Entre em contato se você tiver um projeto desafiador ou oportunidade interessante! 🇧🇷\n\n\n#DataScience #IA #Python #Streamlit #Pandas #NumPy #Matplotlib #BI #AnáliseDeDados #VisualizaçãoDeDados #Dashboard #ProjetosPessoais #AprendizadoContinuo #DevBR #TechBrasil #Carreira #Inovação #DataAnalysis #DataVisualization #PythonBrasil\n\n```"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Gerando Prompt de Imagem...**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "Chamando agente: Image\n"
+          ]
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "**Prompt de Imagem:**"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "```\nWhite line art on black background, minimal vector art, clean, 1:1 aspect ratio. Centralized composition, ample negative space for text.  Icons: Streamlit logo, Pandas logo, NumPy logo, Matplotlib logo, database icon, laptop icon, chart icon, GitHub icon.  --ar 1:1\n\n```"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "---"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "## RESULTADO FINAL"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "### POST LINKEDIN"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "Análise de dados de veículos? 🚀  Criei um dashboard interativo para facilitar!\n\nSempre gostei de explorar dados e visualizá-los de forma clara e intuitiva.  Recentemente, desenvolvi um dashboard interativo em Streamlit para análise de dados de veículos – e a experiência foi incrível!\n\nO objetivo era criar uma ferramenta para análise exploratória eficiente, mesmo para quem não tem muita experiência técnica.  Para isso, usei o poder do Python, combinando a versatililidadde do Pandas para manipulação de dados, a performance do NumPy para cálculos e o Matplotlib para gráficos ricos e informativos.\n\n✨ **Funcionalidades chave:**\n\n* Interface interativa via Streamlit para navegação dinâmica.\n* Visualizações customizadas: histogramas, gráficos de dispersão e mapa de calor de correlação.\n* Estatísticas descritivas para análise rápida e eficiente.\n* Download de dados processados e gráficos.\n* Tratamento completo dos dados: limpeza, preparação, tratamento de valores ausentes e conversão de tipos.\n\n\nConstruir este projeto aprimorou minhas habilidades em visualização de dados e análise exploratória, consolidando meu conhecimento em Python, Streamlit, Pandas, NumPy e Matplotlib. O resultado? Um dashboard que facilita a tomada de decisões baseada em dados!  E o melhor:  está disponível no meu GitHub!\n\n\n➡️ Acesse o código-fonte completo: [https://github.com/JhonAI13/Dashboard_web](https://github.com/JhonAI13/Dashboard_web)  👀\n\n\nBusco novos desafios em Data Science e Inteligência Artificial.  Entre em contato se você tiver um projeto desafiador ou oportunidade interessante! 🇧🇷\n\n\n#DataScience #IA #Python #Streamlit #Pandas #NumPy #Matplotlib #BI #AnáliseDeDados #VisualizaçãoDeDados #Dashboard #ProjetosPessoais #AprendizadoContinuo #DevBR #TechBrasil #Carreira #Inovação #DataAnalysis #DataVisualization #PythonBrasil\n"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "### PROMPT IMAGEM"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": [
+              "<IPython.core.display.Markdown object>"
+            ],
+            "text/markdown": "```\nWhite line art on black background, minimal vector art, clean, 1:1 aspect ratio. Centralized composition, ample negative space for text.  Icons: Streamlit logo, Pandas logo, NumPy logo, Matplotlib logo, database icon, laptop icon, chart icon, GitHub icon.  --ar 1:1\n\n```"
+          },
+          "metadata": {}
+        }
+      ]
+    }
+  ]
+}
